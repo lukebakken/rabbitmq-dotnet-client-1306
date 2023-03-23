@@ -1,6 +1,4 @@
-﻿using System.Diagnostics;
-using System.Timers;
-using RabbitMQ.Client;
+﻿using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
 var factory = new ConnectionFactory()
@@ -62,13 +60,15 @@ try
         // Update prefetch after 7 seconds
         currentMax = 4;
         Thread.Sleep(7000);
-        channel.BasicQos(0, currentMax, false);
-        Console.WriteLine($"Prefetch set to {currentMax}");
+        lock (channel)
+        {
+            channel.BasicQos(0, currentMax, false);
+            Console.WriteLine($"Prefetch set to {currentMax}");
 
-        // Need to cancel consumer and create again in order to work
-
-        //channel.BasicCancel(consumerTag);
-        //consumerTag = StartConsuming(channel, queueName);
+            // Need to cancel consumer and create again in order to work
+            //channel.BasicCancel(consumerTag);
+            //consumerTag = StartConsuming(channel, queueName);
+        }
     });
 
     while (!stopping)
@@ -198,10 +198,15 @@ string StartConsuming(IModel channel, string queueName)
 
             try
             {
-                if(objConsumer is EventingBasicConsumer c)
+                if (objConsumer is EventingBasicConsumer c)
                 {
-                    c.Model.BasicAck(ea.DeliveryTag, false);
-                    Console.WriteLine($"[INFO][{Environment.CurrentManagedThreadId}][{ea.ConsumerTag}][{DateTime.Now:HH:mm:ss.fff}] acked message {ea.DeliveryTag}");
+                    IModel m = c.Model;
+                    lock (m)
+                    {
+                        m.BasicAck(ea.DeliveryTag, false);
+                        Console.WriteLine($"[INFO][{Environment.CurrentManagedThreadId}][{ea.ConsumerTag}][{DateTime.Now:HH:mm:ss.fff}] acked message {ea.DeliveryTag}");
+                    }
+
                 }
             }
             catch (Exception ex)
